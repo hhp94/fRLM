@@ -216,3 +216,99 @@ get_splines <- function( grid, K, range = c(0,1), degree = 3 ){
   # Return the spline basis and its derivatives
   return( list( psi = psi, basis = basis, d_basis = d_basis, d2psi = d2psi ) )
 }
+
+#' fRLM Function
+#'
+#' [fRLM_lpfr()] with [cmdstanr::cmdstan_model()]
+#'
+#' @inheritParams fRLM_lpfr
+#' @param fit_args args of [cmdstanr::cmdstan_model()]
+#' @param sample_args args of the [cmdstanr::CmdStanModel()] sample method.
+#' @export
+
+fRLM_lpfr1 <- function(data, id, time, exposures, outcome, family="gaussian", bounded_exposures=FALSE, controls=NULL, L=4, K=5, grid= seq(0,1,l=150),
+                       fit_args = list(), sample_args = list()) {
+  # Create the time scaler. This function scales the data to standardized scale (on [0,1]) and back to the original scale
+  timeScaler <- fRLM::timeScaler_ff(data %>% pull(!!sym(time)), min=0.06, max=0.93)
+  # Standardize time
+  data <- data %>% mutate(!!time := timeScaler(data[[time]]))
+
+  # Extract quantities
+  # ------------------
+
+  # Extract y
+  y_with_id <- data %>% group_by(!!sym(id)) %>% summarise(!!outcome := mean(!!sym(outcome)))
+  y <- y_with_id %>% dplyr::pull(!!sym(outcome))
+  # Extract tobs (xobs, resp.) as a list of times for each unit (and corresponding exposure, resp.)
+  data_split <- split(data, data[id])
+  tobs <- lapply(data_split, function(di) di[time] %>% unlist %>% as.vector)
+  xobs <- lapply(data_split, function(di) di[exposures] %>% unlist %>% as.vector)
+
+  # Padding, adding observation at t=0 with values 0 TODO: improve the padding, or remove them from the likelihood
+  tobs <- padding(tobs)
+  xobs <- padding(xobs)
+
+  stopifnot(all.equal(tobs$mask, xobs$mask))
+
+  # Create the Nvec list TODO: use the mask instead
+  Nvec <- apply(tobs$mask, 1, function(x)sum(x==0))
+  Nmax <- max(Nvec)
+
+  # Extract the covariates
+  C <- data %>% group_by(!!sym(id)) %>% summarise(across(all_of(controls), ~mean(.))) %>% ungroup() %>%
+    # select the controls
+    select(all_of(controls)) %>%
+    mutate(intercept=1, .before=1) %>% # add intercept (don't! already is in Julien's code!)
+    as.matrix
+
+  # Bases:
+  phi <- getBasis(L, grid) # density splines TODO: write a single function get_splines that can also have density splines
+  psi <- get_splines(grid, K)$psi
+  phi_mat <- apply( tobs$mat, 1, function(tt) get_splines(tt, K )$psi, simplify = F)
+  J <- t(psi) %*% phi / length(grid)
+
+  # Stan
+  # -------------------------
+
+  if (family == "gaussian") {
+    file_name <- "lpfr1.stan"
+  } else if (family == "binary" & bounded_exposures) {
+    file_name <- "lpfr_binary.stan"
+    y = as.integer(y)
+  } else {
+    stop("Combination of family and bounded_exposure not yet implemented.")
+  }
+
+  stan_file <- system.file("stan", file_name, package = "fRLM")
+
+  # Creat the data for stan
+  dat <- list(
+    n = length(y),
+    L = L,
+    K = K,
+    d = ncol(C),
+    Nmax = Nmax,
+    y = y,
+    C = C,
+    phi_mat = phi_mat,
+    J = J,
+    Nvec = Nvec,
+    tobs = tobs$mat,
+    xobs = xobs$mat )
+
+  fit <- do.call(
+    cmdstanr::cmdstan_model,
+    args = c(list(stan_file = stan_file), fit_args)
+  )
+  draws <- do.call(
+    fit$sample,
+    args = c(list(data = dat), sample_args)
+  )
+  out <- list( fit = fit, rstan::extract(fit), L = L, draws = draws)
+  out$psi <- psi
+  out$Xhat <- t( sapply( apply(out$xi, 2, function(x) x %*% t(psi), simplify = F), colMeans ) )
+  out$grid <- timeScaler(grid, original_scale=TRUE)
+  out$timeScaler <- timeScaler
+  class(out) <- "funcRegBayes"
+  return(out)
+}
