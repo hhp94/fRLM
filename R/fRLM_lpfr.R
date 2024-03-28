@@ -225,24 +225,23 @@ get_splines <- function( grid, K, range = c(0,1), degree = 3 ){
 #' @param fit_args args of [cmdstanr::cmdstan_model()]
 #' @param sample_args args of the [cmdstanr::CmdStanModel()] sample method.
 #' @export
-
 fRLM_lpfr1 <- function(data, id, time, exposures, outcome, family="gaussian", bounded_exposures=FALSE, controls=NULL, L=4, K=5, grid= seq(0,1,l=150),
                        fit_args = list(), sample_args = list()) {
   # Create the time scaler. This function scales the data to standardized scale (on [0,1]) and back to the original scale
-  timeScaler <- fRLM::timeScaler_ff(data %>% pull(!!sym(time)), min=0.06, max=0.93)
+  timeScaler <- fRLM::timeScaler_ff(dplyr::pull(data, !!rlang::sym(time)), min=0.06, max=0.93)
   # Standardize time
-  data <- data %>% mutate(!!time := timeScaler(data[[time]]))
+  data <- dplyr::mutate(data, !!time := timeScaler(data[[time]]))
 
   # Extract quantities
   # ------------------
 
   # Extract y
-  y_with_id <- data %>% group_by(!!sym(id)) %>% summarise(!!outcome := mean(!!sym(outcome)))
-  y <- y_with_id %>% dplyr::pull(!!sym(outcome))
+  y_with_id <- dplyr::summarise(dplyr::group_by(data, !!rlang::sym(id)), !!outcome := mean(!!rlang::sym(outcome)))
+  y <- dplyr::pull(y_with_id, !!rlang::sym(outcome))
   # Extract tobs (xobs, resp.) as a list of times for each unit (and corresponding exposure, resp.)
   data_split <- split(data, data[id])
-  tobs <- lapply(data_split, function(di) di[time] %>% unlist %>% as.vector)
-  xobs <- lapply(data_split, function(di) di[exposures] %>% unlist %>% as.vector)
+  tobs <- lapply(data_split, function(di) { as.vector(unlist(di[time])) })
+  xobs <- lapply(data_split, function(di) { as.vector(unlist(di[exposures])) })
 
   # Padding, adding observation at t=0 with values 0 TODO: improve the padding, or remove them from the likelihood
   tobs <- padding(tobs)
@@ -251,7 +250,7 @@ fRLM_lpfr1 <- function(data, id, time, exposures, outcome, family="gaussian", bo
   stopifnot(all.equal(tobs$mask, xobs$mask))
 
   # Create the Nvec list TODO: use the mask instead
-  Nvec <- apply(tobs$mask, 1, function(x)sum(x==0))
+  Nvec <- rowSums(tobs$mask == 0)
   Nmax <- max(Nvec)
 
   # Extract the covariates
@@ -294,21 +293,53 @@ fRLM_lpfr1 <- function(data, id, time, exposures, outcome, family="gaussian", bo
     J = J,
     Nvec = Nvec,
     tobs = tobs$mat,
-    xobs = xobs$mat )
+    xobs = xobs$mat
+  )
 
   fit <- do.call(
     cmdstanr::cmdstan_model,
     args = c(list(stan_file = stan_file), fit_args)
   )
+
   draws <- do.call(
     fit$sample,
     args = c(list(data = dat), sample_args)
   )
-  out <- list( fit = fit, rstan::extract(fit), L = L, draws = draws)
-  out$psi <- psi
-  out$Xhat <- t( sapply( apply(out$xi, 2, function(x) x %*% t(psi), simplify = F), colMeans ) )
-  out$grid <- timeScaler(grid, original_scale=TRUE)
-  out$timeScaler <- timeScaler
-  class(out) <- "funcRegBayes"
+
+  out <- list(
+    fit = fit,
+    draws = draws,
+    psi =  psi,
+    L = L,
+    grid = timeScaler(grid, original_scale = TRUE),
+    timeScaler = timeScaler
+  )
+
+  class(out) <- "funcRegBayes1"
   return(out)
+}
+
+predict.funcRegBayes1 <- function( object, newdata = seq(0,1, l = 150), returnALL = FALSE ){
+  L <- object$L
+  basis <- getBasis( L, grid = newdata )
+  omega_all <- basis %*% t(posterior::as_draws_matrix(object$draws$draws(variables = "beta")))
+  omega <- rowMeans(omega_all)
+  omega_ci <- apply( omega_all, 1, quantile, probs = c(0.025, 0.975) )
+  out <- list( omega = omega, omega_ci = omega_ci, newdata = newdata )
+  if(returnALL){
+    out$omega_all <- omega_all
+  }
+  return( out )
+}
+
+plot.funcRegBayes1 <- function(object, ylim = range( pred$omega_ci ), ...){
+  if(is.null(object[['grid']])) {
+    grid <- seq(0,1, l = 150)
+  } else {
+    grid <- object[['grid']]
+  }
+  pred <- predict(object)
+  plot( pred$omega ~ grid, lwd = 2, type = "l", col = "blue", ylim = ylim, ... )
+  lines( pred$omega_ci[1, ] ~ grid, col = "lightblue" )
+  lines( pred$omega_ci[2, ] ~ grid, col = "lightblue" )
 }

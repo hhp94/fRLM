@@ -21,7 +21,9 @@ Imports:
     abind,
     dplyr,
     magrittr,
-    cmdstanr
+    cmdstanr,
+    posterior,
+    rlang
 LazyData: true
 Suggests: 
     rmarkdown,

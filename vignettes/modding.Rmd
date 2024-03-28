@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 ## Example
 ```{r}
 library(rstan)
+library(fRLM)
 options(mc.cores = 4)
 
 # Gaussian outcome
@@ -24,13 +25,17 @@ debug(fRLM_lpfr)
 
 fit <- fRLM_lpfr(
   data = toy,
-  id="id",  # string, name of the subject identifier
-  exposures = "exposure", # string, the variable name of the exposures (for now, one)
-  outcome="outcome", # string, the variable name of the outcome
-  time = "age", # string, the variable name of the time at which measures were taken
-  warmup= 500,
-  iter=1000,
-  chains=4
+  id = "id",
+  # string, name of the subject identifier
+  exposures = "exposure",
+  # string, the variable name of the exposures (for now, one)
+  outcome = "outcome",
+  # string, the variable name of the outcome
+  time = "age",
+  # string, the variable name of the time at which measures were taken
+  warmup = 500,
+  iter = 1000,
+  chains = 4
 )
 
 undebug(fRLM_lpfr)
@@ -40,21 +45,38 @@ w = predict(fit)
 ```
 
 ```{r}
+rstan::extract(fit$fit)$xi |> class()
+rstan::extract(fit$fit)$xi |> head()
+```
+
+```{r}
+library(cmdstanr)
+cmdstanr_example("schools")
+```
+
+```{r}
 library(cmdstanr)
 debug(fRLM_lpfr1)
 fit1 <- fRLM_lpfr1(
   data = toy,
-  id="id",  # string, name of the subject identifier
-  exposures = "exposure", # string, the variable name of the exposures (for now, one)
-  outcome="outcome", # string, the variable name of the outcome
-  time = "age", # string, the variable name of the time at which measures were taken
-  sample_args = list(refresh = 100, parallel_chains = 4, iter_warmup = 1000, iter_sampling = 1000)
+  id = "id",
+  # string, name of the subject identifier
+  exposures = "exposure",
+  # string, the variable name of the exposures (for now, one)
+  outcome = "outcome",
+  # string, the variable name of the outcome
+  time = "age",
+  # string, the variable name of the time at which measures were taken
+  sample_args = list(
+    refresh = 100,
+    parallel_chains = 4,
+    iter_warmup = 1000,
+    iter_sampling = 1000
+  )
 )
 undebug(fRLM_lpfr1)
 ```
 
 ```{r}
-fit <- readRDS(here::here("inst", "stan", "example_fit.rds"))
-extract(fit)
+plot(fit1)
 ```
-
