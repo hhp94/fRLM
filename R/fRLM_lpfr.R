@@ -319,6 +319,7 @@ fRLM_lpfr1 <- function(data, id, time, exposures, outcome, family="gaussian", bo
   return(out)
 }
 
+#' @export
 predict.funcRegBayes1 <- function( object, newdata = seq(0,1, l = 150), returnALL = FALSE ){
   L <- object$L
   basis <- getBasis( L, grid = newdata )
@@ -332,6 +333,7 @@ predict.funcRegBayes1 <- function( object, newdata = seq(0,1, l = 150), returnAL
   return( out )
 }
 
+#' @export
 plot.funcRegBayes1 <- function(object, ylim = range( pred$omega_ci ), ...){
   if(is.null(object[['grid']])) {
     grid <- seq(0,1, l = 150)

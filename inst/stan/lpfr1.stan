@@ -41,7 +41,7 @@ model {
   alpha ~ std_normal(); // Prior for alpha. Probably too tight for unstandardized y
   // GP likelihood:
   for(i in 1:n){
-    // For each row, the xobs runs from the first row to the last non masked value (observation)
+    // For each row, the xobs runs from the first column to the last non masked value (observation)
     // This is modeled as a multivariate normal of mean phi_mat * transpose of xi which are parameters
     xobs[i,:Nvec[i]] ~ normal(phi_mat[i][:Nvec[i]] * xi[i]', sigma_x);
   }

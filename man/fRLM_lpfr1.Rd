@@ -41,9 +41,9 @@ fRLM_lpfr1(
 
 \item{K}{An integer representing the number of knots for each basis function. Default is K=5.}
 
-\item{fit_args}{\code{\link[cmdstanr:CmdStanModel]{cmdstanr::CmdStanModel()}} args}
+\item{fit_args}{args of \code{\link[cmdstanr:cmdstan_model]{cmdstanr::cmdstan_model()}}}
 
-\item{sample_args}{args}
+\item{sample_args}{args of the \code{\link[cmdstanr:CmdStanModel]{cmdstanr::CmdStanModel()}} sample method.}
 }
 \description{
 \code{\link[=fRLM_lpfr]{fRLM_lpfr()}} with \code{\link[cmdstanr:cmdstan_model]{cmdstanr::cmdstan_model()}}

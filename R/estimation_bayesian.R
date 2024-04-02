@@ -58,7 +58,62 @@ funcReg_bayes <- function( y, X, L = 5, covariates = NULL, alpha_par = 1, beta_p
   return(out)
 }
 
+#' FUNCTIONAL LIFECOURSE MODEL
+#'
+#' [funcReg_bayes()] with [cmdstanr::cmdstan_model()]
+#'
+#' @inheritParams funcReg_bayes
+#' @param fit_args args of [cmdstanr::cmdstan_model()]
+#' @param sample_args args of the [cmdstanr::CmdStanModel()] sample method.
+#' @export
+funcReg_bayes1 <- function(
+    y,
+    X,
+    L = 5,
+    covariates = NULL,
+    alpha_par = 1,
+    beta_par = 1,
+    grid = seq(0, 1, l = ncol(X)),
+    fit_args = NULL,
+    sample_args = NULL) {
+  stopifnot(nrow(X) == length(y))
+  C <- cbind(rep(1, length(y)), covariates)  # scalar predictors
+  basis <- getBasis(L, grid)
+  Int_XtimesBasis <- X %*% basis / ncol(X)
+  # Stan:
+  dat <- list(
+    N = length(y),
+    L = L,
+    D = ncol(C),
+    y = y,
+    eta = Int_XtimesBasis,
+    alpha_par = alpha_par,
+    beta_par = beta_par,
+    C = C
+  )
+  fileName <- "plugin1.stan"
+  stan_file <- system.file("stan", fileName, package = "fRLM")
 
+  fit <- do.call(
+    cmdstanr::cmdstan_model,
+    args = c(list(stan_file = stan_file), fit_args)
+  )
+
+  draws <- do.call(
+    fit$sample,
+    args = c(list(data = dat), sample_args)
+  )
+
+    # output:
+  out <- list(
+    fit = fit,
+    draws = draws,
+    basis = basis,
+    L = L
+  )
+  class(out) <- "funcRegBayes1"
+  return(out)
+}
 
 #' @export
 predict.funcRegBayes <- function( object, newdata = seq(0,1, l = 150), returnALL = FALSE ){
